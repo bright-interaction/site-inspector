@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "Site Inspector by Bright Interaction",
+  "version": "1.2.0",
+  "description": "One-click website audit: security, performance, SEO, privacy & accessibility. 80+ checks, A+ to F grading, free.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "webRequest",
+    "storage"
+  ],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content-script.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "homepage_url": "https://brightinteraction.com"
+}

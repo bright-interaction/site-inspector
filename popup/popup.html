@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Site Inspector</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="header">
+    <div class="header-top">
+      <h1>Site Inspector <span id="status-code" class="status-badge hidden"></span></h1>
+      <div class="header-actions">
+        <button id="dark-mode-btn" class="icon-btn" title="Toggle dark mode">&#9789;</button>
+        <button id="email-btn" class="export-btn hidden" title="Generate outreach email">&#9993; Email</button>
+        <button id="pdf-btn" class="export-btn hidden" title="Generate PDF report">&#9113; PDF</button>
+        <button id="export-btn" class="export-btn hidden" title="Export results to CSV">&#x2913; CSV</button>
+        <button id="refresh-btn" class="icon-btn" title="Re-analyze">&#x21bb;</button>
+      </div>
+    </div>
+    <div id="site-url" class="site-url">Loading...</div>
+  </div>
+
+  <div id="loading" class="loading">
+    <div class="spinner"></div>
+    <span>Analyzing...</span>
+  </div>
+
+  <div id="grades" class="grades hidden">
+    <div class="grade-card" data-tab="quick-wins">
+      <div class="grade-letter" id="grade-overall">-</div>
+      <div class="grade-label">Overall</div>
+    </div>
+    <div class="grade-card" data-tab="tech">
+      <div class="grade-letter" id="grade-tech">-</div>
+      <div class="grade-label">Tech</div>
+    </div>
+    <div class="grade-card" data-tab="security">
+      <div class="grade-letter" id="grade-security">-</div>
+      <div class="grade-label">Security</div>
+    </div>
+    <div class="grade-card" data-tab="performance">
+      <div class="grade-letter" id="grade-perf">-</div>
+      <div class="grade-label">Performance</div>
+    </div>
+    <div class="grade-card" data-tab="seo">
+      <div class="grade-letter" id="grade-seo">-</div>
+      <div class="grade-label">SEO</div>
+    </div>
+    <div class="grade-card" data-tab="privacy">
+      <div class="grade-letter" id="grade-privacy">-</div>
+      <div class="grade-label">Privacy</div>
+    </div>
+    <div class="grade-card" data-tab="accessibility">
+      <div class="grade-letter" id="grade-a11y">-</div>
+      <div class="grade-label">A11y</div>
+    </div>
+    <div class="grade-card" data-tab="keywords">
+      <div class="grade-letter" id="grade-kw">&#9881;</div>
+      <div class="grade-label">Keywords</div>
+    </div>
+  </div>
+
+  <div id="content" class="content hidden">
+    <!-- Quick Wins (default tab) -->
+    <div id="tab-quick-wins" class="tab-content active">
+      <div id="history-section" class="section hidden"></div>
+      <div class="section">
+        <div class="section-title">Top Issues to Fix</div>
+        <div id="quick-wins"></div>
+      </div>
+    </div>
+
+    <div id="tab-tech" class="tab-content">
+      <div id="tech-results"></div>
+    </div>
+    <div id="tab-security" class="tab-content">
+      <div id="security-results"></div>
+    </div>
+    <div id="tab-performance" class="tab-content">
+      <div id="perf-results"></div>
+    </div>
+    <div id="tab-seo" class="tab-content">
+      <div id="seo-results"></div>
+    </div>
+    <div id="tab-privacy" class="tab-content">
+      <div id="privacy-results"></div>
+    </div>
+    <div id="tab-accessibility" class="tab-content">
+      <div id="a11y-results"></div>
+    </div>
+    <div id="tab-keywords" class="tab-content">
+      <div id="keywords-results"></div>
+    </div>
+  </div>
+
+  <div id="error" class="error hidden">
+    <p>No data available for this page.</p>
+    <p class="hint">Try refreshing the page and reopening the extension.</p>
+  </div>
+
+  <div id="email-modal" class="modal hidden">
+    <div class="modal-header">
+      <span class="modal-title">Outreach Email</span>
+      <button id="email-modal-close" class="icon-btn">&#10005;</button>
+    </div>
+    <textarea id="email-content" class="modal-textarea" readonly></textarea>
+    <div class="modal-actions">
+      <button id="email-copy" class="export-btn">Copy to clipboard</button>
+    </div>
+  </div>
+
+  <div class="footer">
+    <span class="footer-brand">by <a href="https://brightinteraction.com" target="_blank" rel="noopener noreferrer">Bright Interaction</a></span>
+    <a class="footer-cta" href="https://brightinteraction.com" target="_blank" rel="noopener noreferrer">Need help fixing issues?</a>
+  </div>
+
+  <script src="../analyzers/grading.js"></script>
+  <script src="../analyzers/tech-detect.js"></script>
+  <script src="../analyzers/security.js"></script>
+  <script src="../analyzers/performance.js"></script>
+  <script src="../analyzers/seo.js"></script>
+  <script src="../analyzers/privacy.js"></script>
+  <script src="../analyzers/accessibility.js"></script>
+  <script src="report.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
