@@ -29,6 +29,7 @@ const PrivacyAnalyzer = {
     this.checkPreConsentTracking(cookies, results);
     await this.checkPrivacyPolicy(domData, results);
     this.checkDntGpc(headers, results);
+    await this.checkAiTrainingBots(domData, results);
 
     results.grade = this.calculateGrade(results.score, results.maxScore);
     return results;
@@ -384,6 +385,33 @@ const PrivacyAnalyzer = {
         : 'No Tk header — not signaling Do Not Track compliance',
       recommendation: hasTk ? null : 'Add Tk: N header to signal DNT/GPC compliance',
     });
+  },
+
+  async checkAiTrainingBots(domData, results) {
+    const origin = domData.pageOrigin || '';
+    if (!origin) return;
+    try {
+      const resp = await fetchWithTimeout(`${origin}/robots.txt`, { cache: 'no-cache' });
+      if (resp.ok) {
+        const text = await resp.text();
+        const aiTrainingBots = ['GPTBot', 'CCBot', 'anthropic-ai', 'Google-Extended', 'ChatGPT-User'];
+        const blocked = aiTrainingBots.filter(bot => {
+          const regex = new RegExp(`user-agent:\\s*${bot}[\\s\\S]*?disallow:\\s*/`, 'i');
+          return regex.test(text);
+        });
+        const allBlocked = blocked.length >= 3;
+        results.maxScore += 2;
+        if (allBlocked) results.score += 2;
+        else if (blocked.length > 0) results.score += 1;
+        results.checks.push({
+          name: 'AI Training Bots Blocked',
+          passed: allBlocked,
+          weight: 2,
+          detail: blocked.length > 0 ? `Blocking: ${blocked.join(', ')}` : 'No AI training bots blocked in robots.txt',
+          recommendation: allBlocked ? null : 'Block AI training crawlers (GPTBot, CCBot, anthropic-ai) in robots.txt to protect content from unauthorized training use',
+        });
+      }
+    } catch {}
   },
 
   calculateGrade(score, maxScore) {

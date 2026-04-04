@@ -27,7 +27,9 @@ const PerformanceAnalyzer = {
     this.analyzeResources(perf, results);
     this.analyzeImages(images, results);
     this.analyzeFonts(fonts, results);
+    this.analyzeGoogleFonts(fonts, results);
     this.analyzeInlineStyles(styles, results);
+    this.analyzeInlineCssSize(styles, results);
     this.analyzeProtocol(perf, results);
     this.analyzeRedirects(perf, results);
 
@@ -276,6 +278,34 @@ const PerformanceAnalyzer = {
       preloaded: fontData.preloadedFonts?.length || 0,
       usesGoogleFonts: fontData.usesGoogleFonts,
     };
+  },
+
+  analyzeGoogleFonts(fontData, results) {
+    if (!fontData) return;
+    if (fontData.usesGoogleFonts && fontData.googleFontFamilies) {
+      const count = fontData.googleFontFamilies.length;
+      results.maxScore += 1;
+      const ok = count <= 3;
+      if (ok) results.score += 1;
+      else {
+        results.issues.push({
+          severity: 'warning',
+          message: `${count} Google Font families loaded (${fontData.googleFontFamilies.join(', ')}) — each adds a blocking request. Use ≤3 families or self-host`,
+        });
+      }
+    }
+  },
+
+  analyzeInlineCssSize(styles, results) {
+    if (!styles) return;
+    const inlineSize = styles.inlineCssSize || 0;
+    if (inlineSize > 50000) {
+      results.maxScore += 1;
+      results.issues.push({
+        severity: 'warning',
+        message: `${Math.round(inlineSize / 1024)}KB of inline CSS — page builders often inject excessive inline styles. Consider extracting to external stylesheets`,
+      });
+    }
   },
 
   analyzeInlineStyles(styles, results) {

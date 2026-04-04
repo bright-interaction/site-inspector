@@ -118,12 +118,19 @@
       el.classList.forEach((c) => allClasses.add(c));
     }
 
+    // Measure total inline CSS size (for page builder bloat detection)
+    let inlineCssSize = 0;
+    document.querySelectorAll('style').forEach(s => {
+      inlineCssSize += (s.textContent || '').length;
+    });
+
     return {
       links: styles,
       sampleClasses: Array.from(allClasses).slice(0, 300),
       inlineStyleCount: inlineStyles.length,
       inlineStyleSize,
       inlineStyleAttrs,
+      inlineCssSize,
     };
   }
 
@@ -429,6 +436,15 @@
       (img) => !img.width && !img.height && !img.getAttribute('width') && !img.getAttribute('height')
     ).length;
 
+    // Count generic alt texts
+    const genericAltPattern = /^(image|photo|picture|logo|icon|banner|img|untitled|screenshot|placeholder|default)\s*\d*$/i;
+    let genericAltTexts = 0;
+    images.forEach(img => {
+      const alt = img.getAttribute('alt') || '';
+      if (alt && genericAltPattern.test(alt.trim())) genericAltTexts++;
+    });
+    seo.genericAltTexts = genericAltTexts;
+
     // Images without title attribute
     seo.imagesWithoutTitle = Array.from(images).filter(
       (img) => !img.getAttribute('title')
@@ -466,6 +482,8 @@
     seo.ogType = (document.querySelector('meta[property="og:type"]') || {}).content || '';
     seo.ogUrl = (document.querySelector('meta[property="og:url"]') || {}).content || '';
     seo.ogImage = (document.querySelector('meta[property="og:image"]') || {}).content || '';
+    seo.ogImageWidth = (document.querySelector('meta[property="og:image:width"]') || {}).content || '';
+    seo.ogImageHeight = (document.querySelector('meta[property="og:image:height"]') || {}).content || '';
     seo.ogSiteName = (document.querySelector('meta[property="og:site_name"]') || {}).content || '';
 
     // Twitter Card — detailed
@@ -625,6 +643,13 @@
       return true;
     });
 
+    // Check for visible FAQ section
+    const hasVisibleFaq = !!(
+      document.querySelector('[id*="faq" i], [class*="faq" i], details summary, [itemtype*="FAQPage"]') ||
+      document.querySelector('h2, h3')?.textContent?.match(/\bfaq\b|frequently asked/i)
+    );
+    seo.hasVisibleFaq = hasVisibleFaq;
+
     // Plaintext email detection
     // Walk only text nodes to find emails hardcoded in the HTML source.
     // Emails assembled by JavaScript (obfuscated) are excluded by checking
@@ -646,6 +671,26 @@
       }
     }
     seo.plaintextEmails = [...visibleEmails].slice(0, 10);
+
+    // Detect visible star ratings / review scores (common pattern: displayed but no schema)
+    const hasVisibleRating = !!(
+      document.querySelector('[class*="star-rating" i], [class*="rating" i][class*="star" i], .trustpilot-widget, [class*="google-rating" i], [class*="review-score" i]') ||
+      document.querySelector('[aria-label*="rating" i], [aria-label*="stars" i], [role="img"][aria-label*="star" i]') ||
+      [...document.querySelectorAll('span, div, p')].slice(0, 200).some(el => /\b[4-5]\.[0-9]\/5\b|\b[4-5]\.[0-9]\s*(?:stars?|stjärnor)\b/i.test(el.textContent))
+    );
+    seo.hasVisibleRating = hasVisibleRating;
+
+    // Detect page builder
+    let pageBuilder = null;
+    if (document.querySelector('[class*="elementor"]')) pageBuilder = 'Elementor';
+    else if (document.querySelector('[class*="et_pb_"], [class*="et_builder"]')) pageBuilder = 'Divi';
+    else if (document.querySelector('[class*="brxe-"]')) pageBuilder = 'Bricks Builder';
+    else if (document.querySelector('[class*="fl-builder"]')) pageBuilder = 'Beaver Builder';
+    else if (document.querySelector('[class*="wp-block-"]') && document.querySelector('[class*="is-layout-"]')) pageBuilder = 'Gutenberg (Block Editor)';
+    else if (document.querySelector('[data-wf-page]')) pageBuilder = 'Webflow';
+    else if (document.querySelector('[class*="sqs-"]')) pageBuilder = 'Squarespace';
+    else if (document.querySelector('[class*="wix-"]')) pageBuilder = 'Wix';
+    seo.pageBuilder = pageBuilder;
 
     return seo;
   }
@@ -898,6 +943,18 @@
       document.querySelector('link[href*="fonts.googleapis.com"]') ||
       document.querySelector('link[href*="fonts.gstatic.com"]')
     );
+
+    // Extract Google Font family names
+    const googleFontLink = document.querySelector('link[href*="fonts.googleapis.com/css"]');
+    let googleFontFamilies = [];
+    if (googleFontLink) {
+      const href = googleFontLink.getAttribute('href') || '';
+      const familyMatch = href.match(/family=([^&]+)/);
+      if (familyMatch) {
+        googleFontFamilies = familyMatch[1].split('|').map(f => f.split(':')[0].replace(/\+/g, ' '));
+      }
+    }
+    fonts.googleFontFamilies = googleFontFamilies;
 
     // Font resource count
     const fontResources = performance.getEntriesByType('resource').filter((r) =>

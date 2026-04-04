@@ -85,9 +85,6 @@
     // Export CSV
     document.getElementById('export-btn').addEventListener('click', exportCsv);
     document.getElementById('pdf-btn').addEventListener('click', openPdfReport);
-    document.getElementById('email-btn').addEventListener('click', showEmailModal);
-    document.getElementById('email-modal-close').addEventListener('click', () => document.getElementById('email-modal').classList.add('hidden'));
-    document.getElementById('email-copy').addEventListener('click', copyEmail);
     initDarkMode();
   }
 
@@ -173,7 +170,6 @@
     show('results');
     document.getElementById('export-btn').classList.remove('hidden');
     document.getElementById('pdf-btn').classList.remove('hidden');
-    document.getElementById('email-btn').classList.remove('hidden');
 
     // Set badge on extension icon
     const overallGrade = getOverallGrade();
@@ -820,29 +816,6 @@
       const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(html);
       chrome.tabs.create({ url: dataUrl });
     } catch (e) { console.error('PDF report error:', e); }
-  }
-
-  // ═══════════════════════════════════════════
-  // OUTREACH EMAIL
-  // ═══════════════════════════════════════════
-
-  function showEmailModal() {
-    if (!analysisResults.security) return;
-    try {
-      const email = generateOutreachEmail(analysisResults, analyzedUrl);
-      document.getElementById('email-content').value = email;
-      document.getElementById('email-modal').classList.remove('hidden');
-    } catch (e) { console.error('Email generator error:', e); }
-  }
-
-  function copyEmail() {
-    const textarea = document.getElementById('email-content');
-    textarea.select();
-    navigator.clipboard.writeText(textarea.value).then(() => {
-      const btn = document.getElementById('email-copy');
-      btn.textContent = 'Copied!';
-      setTimeout(() => { btn.textContent = 'Copy to clipboard'; }, 2000);
-    });
   }
 
   // ═══════════════════════════════════════════

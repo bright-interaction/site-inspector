@@ -19,12 +19,15 @@ const SeoAnalyzer = {
     // ─── On-Page SEO ───
     this.checkTitle(seo, results);
     this.checkDescription(seo, results);
+    this.checkDescriptionCta(seo, results);
     this.checkHeadings(seo, results);
     this.checkHeadingHierarchy(seo, results);
     this.checkImages(seo, results);
+    this.checkAltTextQuality(seo, results);
     this.checkImageDimensions(seo, results);
     this.checkContent(seo, results);
     this.checkLinks(seo, results);
+    this.checkExternalLinks(seo, results);
     this.checkLinkQuality(seo, results);
     this.checkTextToHtmlRatio(seo, results);
     this.checkUrlStructure(seo, results);
@@ -50,14 +53,18 @@ const SeoAnalyzer = {
       await Promise.all([
         this.checkRobotsTxt(origin, results),
         this.checkSitemap(origin, results),
+        this.checkLlmsTxt(origin, results),
       ]);
     }
 
     // ─── Social & Rich Results ───
     this.checkStructuredData(seo, results);
     this.checkStructuredDataTypes(seo, results);
+    this.checkFaqSchemaVisibility(seo, results);
     this.checkOpenGraph(seo, results);
+    this.checkOgImageDimensions(seo, results);
     this.checkTwitterCard(seo, results);
+    this.checkRatingSchemaConsistency(seo, results);
     this.checkPlaintextEmails(seo, results);
 
     // Store SERP + social data for popup rendering (not scored)
@@ -101,6 +108,12 @@ const SeoAnalyzer = {
       'Add a <title> tag', 'on-page');
     this.addCheck(results, 'Title Length (30-60 chars)', len >= 30 && len <= 60, 1,
       `${len} characters`, 'Keep title between 30-60 characters for optimal SERP display', 'on-page');
+
+    if (len > 60) {
+      this.addCheck(results, 'Title Not Truncated (≤60 chars)', false, 1,
+        `${len} characters — will be truncated in search results`,
+        'Shorten title to under 60 characters to prevent truncation in Google SERPs', 'on-page');
+    }
 
     // Title starts with keyword-like content (not brand name or separator)
     if (title) {
@@ -536,6 +549,80 @@ const SeoAnalyzer = {
         'Add twitter:image for link preview images on Twitter/X', 'social');
     }
   },
+
+  checkExternalLinks(seo, results) {
+    const external = seo.externalLinks || 0;
+    this.addCheck(results, 'External Outbound Links', external >= 2, 1,
+      `${external} external link(s)`,
+      'Add 2-3 outbound links to authoritative sources — signals trust and topical relevance to search engines', 'on-page');
+  },
+
+  checkAltTextQuality(seo, results) {
+    const generic = seo.genericAltTexts || 0;
+    const total = seo.totalImages || 0;
+    if (total > 0) {
+      this.addCheck(results, 'Descriptive Alt Text', generic === 0, 1,
+        generic > 0 ? `${generic}/${total} image(s) have generic alt text (e.g., "image", "photo", "logo")` : 'All alt text is descriptive',
+        'Replace generic alt text like "image" or "logo" with descriptive text that includes context', 'on-page');
+    }
+  },
+
+  checkDescriptionCta(seo, results) {
+    const desc = (seo.description || '').toLowerCase();
+    if (desc) {
+      const ctaWords = /\b(learn|get|discover|find|try|start|book|free|download|read|see|check|explore|calculate|compare)\b/;
+      const hasCta = ctaWords.test(desc);
+      this.addCheck(results, 'Meta Description Has CTA', hasCta, 1,
+        hasCta ? 'Contains action-oriented language' : 'No call-to-action words found',
+        'Add action words like "learn", "get", "discover", or "free" to improve click-through rate', 'on-page');
+    }
+  },
+
+  async checkLlmsTxt(origin, results) {
+    try {
+      const resp = await fetchWithTimeout(`${origin}/llms.txt`, { method: 'HEAD', cache: 'no-cache' });
+      this.addCheck(results, 'llms.txt (AI Search)', resp.ok, 1,
+        resp.ok ? 'Present' : 'Not found',
+        'Add a llms.txt file to help AI search engines (ChatGPT, Perplexity) understand and cite your content', 'technical');
+    } catch {
+      this.addCheck(results, 'llms.txt (AI Search)', false, 1,
+        'Could not fetch', 'Add a llms.txt file for AI search engine visibility', 'technical');
+    }
+  },
+
+  checkFaqSchemaVisibility(seo, results) {
+    const types = seo.structuredDataTypes || [];
+    const hasFaqSchema = types.some(t => t === 'FAQPage');
+    if (hasFaqSchema) {
+      const hasVisibleFaq = seo.hasVisibleFaq || false;
+      this.addCheck(results, 'FAQ Schema Has Visible Content', hasVisibleFaq, 2,
+        hasVisibleFaq ? 'FAQ schema matches visible FAQ section' : 'FAQPage schema found but no visible FAQ section on page',
+        'Google requires FAQ schema to match visible content on the page — add a visible FAQ section or remove the schema', 'social');
+    }
+  },
+
+  checkOgImageDimensions(seo, results) {
+    if (seo.ogImage && seo.ogImageWidth && seo.ogImageHeight) {
+      const w = parseInt(seo.ogImageWidth);
+      const h = parseInt(seo.ogImageHeight);
+      const correctSize = w === 1200 && h === 630;
+      this.addCheck(results, 'OG Image Size (1200x630)', correctSize, 1,
+        `${w}x${h}`,
+        'Use 1200x630px for og:image — this is the optimal size for LinkedIn, Facebook, and Twitter previews', 'social');
+    }
+  },
+
+  checkRatingSchemaConsistency(seo, results) {
+    const hasVisibleRating = seo.hasVisibleRating || false;
+    const types = seo.structuredDataTypes || [];
+    const hasRatingSchema = types.some(t => t === 'AggregateRating' || t === 'Review');
+    if (hasVisibleRating && !hasRatingSchema) {
+      this.addCheck(results, 'Rating Has Schema', false, 2,
+        'Star rating or review score displayed but no AggregateRating/Review schema found',
+        'Add AggregateRating schema to match visible ratings — this enables star rich results in Google', 'social');
+    }
+  },
+
 
   // ─── Security / Privacy ───
 

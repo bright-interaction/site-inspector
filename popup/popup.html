@@ -12,8 +12,7 @@
       <h1>Site Inspector <span id="status-code" class="status-badge hidden"></span></h1>
       <div class="header-actions">
         <button id="dark-mode-btn" class="icon-btn" title="Toggle dark mode">&#9789;</button>
-        <button id="email-btn" class="export-btn hidden" title="Generate outreach email">&#9993; Email</button>
-        <button id="pdf-btn" class="export-btn hidden" title="Generate PDF report">&#9113; PDF</button>
+<button id="pdf-btn" class="export-btn hidden" title="Generate PDF report">&#9113; PDF</button>
         <button id="export-btn" class="export-btn hidden" title="Export results to CSV">&#x2913; CSV</button>
         <button id="refresh-btn" class="icon-btn" title="Re-analyze">&#x21bb;</button>
       </div>
@@ -99,20 +98,9 @@
     <p class="hint">Try refreshing the page and reopening the extension.</p>
   </div>
 
-  <div id="email-modal" class="modal hidden">
-    <div class="modal-header">
-      <span class="modal-title">Outreach Email</span>
-      <button id="email-modal-close" class="icon-btn">&#10005;</button>
-    </div>
-    <textarea id="email-content" class="modal-textarea" readonly></textarea>
-    <div class="modal-actions">
-      <button id="email-copy" class="export-btn">Copy to clipboard</button>
-    </div>
-  </div>
-
   <div class="footer">
-    <span class="footer-brand">by <a href="https://brightinteraction.com" target="_blank" rel="noopener noreferrer">Bright Interaction</a></span>
-    <a class="footer-cta" href="https://brightinteraction.com" target="_blank" rel="noopener noreferrer">Need help fixing issues?</a>
+    <span class="footer-brand">by <a href="https://brightinteraction.com" target="_blank" rel="noopener noreferrer">Bright Interaction</a> <span class="footer-version">v1.3.0</span></span>
+    <a class="footer-cta" href="https://brightinteraction.com/platform" target="_blank" rel="noopener noreferrer">Need help fixing issues?</a>
   </div>
 
   <script src="../analyzers/grading.js"></script>

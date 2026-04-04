@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Site Inspector by Bright Interaction",
-  "version": "1.2.0",
-  "description": "One-click website audit: security, performance, SEO, privacy & accessibility. 80+ checks, A+ to F grading, free.",
+  "version": "1.3.0",
+  "description": "One-click website audit: security, performance, SEO, privacy & accessibility. 130+ checks, A+ to F grading, free.",
   "permissions": [
     "activeTab",
     "scripting",

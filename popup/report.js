@@ -1,4 +1,4 @@
-// Site Inspector — PDF Report & Outreach Email Generator
+// Site Inspector — PDF Report Generator
 
 function generateReport(results, url) {
   const r = results;
@@ -226,62 +226,6 @@ function generateReport(results, url) {
 </html>`;
 
   return html;
-}
-
-function generateOutreachEmail(results, url) {
-  const r = results;
-  const hostname = new URL(url).hostname;
-  const company = hostname.replace(/^www\./, '').split('.')[0];
-  const companyName = company.charAt(0).toUpperCase() + company.slice(1);
-
-  // Collect top issues
-  const issues = [];
-  const addIssues = (category, checks) => {
-    for (const c of checks) {
-      if (c.passed === false && c.recommendation) {
-        issues.push({ category, name: c.name, fix: c.recommendation });
-      }
-    }
-  };
-  addIssues('Security', r.security.checks);
-  addIssues('Performance', (r.perf.issues || []).map((i) => ({ name: i.message, passed: false, recommendation: i.message })));
-  addIssues('SEO', r.seo.checks);
-  addIssues('Privacy', r.privacy.checks);
-  addIssues('Accessibility', r.a11y.checks);
-
-  const topIssues = issues.slice(0, 5);
-
-  const grades = [
-    `Security: ${r.security.grade}`,
-    `Performance: ${r.perf.grade}`,
-    `SEO: ${r.seo.grade}`,
-    `Privacy: ${r.privacy.grade}`,
-    `Accessibility: ${r.a11y.grade}`,
-  ].join(' | ');
-
-  const issueList = topIssues.map((i, idx) => `${idx + 1}. ${i.name} (${i.category})`).join('\n');
-
-  const email = `Subject: Quick audit of ${hostname} — a few things stood out
-
-Hi ${companyName} team,
-
-I ran a quick technical audit of ${hostname} and wanted to share a few findings:
-
-${grades}
-
-Top issues I noticed:
-${issueList}
-
-${topIssues.length > 0 ? `The most impactful fix would be "${topIssues[0].name}" — ${topIssues[0].fix.toLowerCase()}` : 'Your site looks solid across the board.'}
-
-I put together a detailed report with all the specifics. Happy to walk through it if you're interested — just reply and I'll send it over.
-
-Best,
-[Your name]
-Bright Interaction
-https://brightinteraction.com`;
-
-  return email;
 }
 
 function esc(str) {

@@ -18,6 +18,7 @@ const TechDetect = {
       this.analyzeScripts(data.domData.scripts, results);
       this.analyzeStyles(data.domData.styles, results);
       this.analyzeMeta(data.domData.meta, results);
+      this.detectPageBuilder(data.domData.seo, results);
     }
 
     return results;
@@ -238,6 +239,13 @@ const TechDetect = {
     if (generator.match(/astro/i)) results.frameworks.push({ name: 'Astro', confidence: 100, icon: '🚀', category: 'frontend' });
     if (generator.match(/gatsby/i)) results.frameworks.push({ name: 'Gatsby', confidence: 100, icon: '💜', category: 'frontend' });
     if (generator.match(/docusaurus/i)) results.frameworks.push({ name: 'Docusaurus', confidence: 95, icon: '🦖', category: 'ssg' });
+  },
+
+  detectPageBuilder(seo, results) {
+    const builder = seo?.pageBuilder;
+    if (builder) {
+      results.libraries.push({ name: builder, confidence: 95, icon: '🧱', category: 'page-builder' });
+    }
   },
 
   // Deduplicate results
