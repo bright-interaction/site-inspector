@@ -16,6 +16,32 @@ const SeoAnalyzer = {
       summary: {},
     };
 
+    // ─── App Page Detection ───
+    // Authenticated apps (CRM dashboards, admin panels, portals) should not
+    // be penalized for missing SEO metadata since they're not meant to be indexed.
+    const appPathPattern = /\/(dashboard|app|admin|portal|console|settings|account|inbox|workspace|backoffice)\b/i;
+    const urlPath = (data.domData?.url || '').replace(/^https?:\/\/[^/]+/, '');
+    const wordCount = parseInt(seo.wordCount, 10) || 0;
+    const appSignals = [
+      appPathPattern.test(urlPath),
+      wordCount < 200 && wordCount > 0,
+      !seo.title,
+      !seo.canonical,
+      (data.domData?.cookies || []).length >= 3,
+    ].filter(Boolean).length;
+    results.isAppPage = appSignals >= 3;
+
+    if (results.isAppPage) {
+      results.checks.push({
+        name: 'App Page Detected',
+        passed: null,
+        weight: 0,
+        detail: 'This looks like an authenticated application (not a public content page). SEO checks for title, description, OG tags, and structured data are informational only and do not affect the score.',
+        recommendation: null,
+        section: 'on-page',
+      });
+    }
+
     // ─── On-Page SEO ───
     this.checkTitle(seo, results);
     this.checkDescription(seo, results);
@@ -60,12 +86,21 @@ const SeoAnalyzer = {
     // ─── Social & Rich Results ───
     this.checkStructuredData(seo, results);
     this.checkStructuredDataTypes(seo, results);
+    this.checkSchemaFields(seo, results);
     this.checkFaqSchemaVisibility(seo, results);
     this.checkOpenGraph(seo, results);
     this.checkOgImageDimensions(seo, results);
     this.checkTwitterCard(seo, results);
     this.checkRatingSchemaConsistency(seo, results);
     this.checkPlaintextEmails(seo, results);
+
+    // ─── Hreflang Deep Checks ───
+    this.checkHreflangSelfRef(seo, results);
+    this.checkHreflangXDefault(seo, results);
+    this.checkHreflangHostMatch(seo, results);
+
+    // ─── Link Quality ───
+    this.checkTrailingSlashes(seo, results);
 
     // Store SERP + social data for popup rendering (not scored)
     results.serp = {
@@ -81,7 +116,29 @@ const SeoAnalyzer = {
     return results;
   },
 
+  // Checks that are meaningless for authenticated app pages (no public indexing)
+  _appExemptChecks: new Set([
+    'Has Title', 'Title Length (30-60 chars)', 'Title Starts with Content', 'Title Not Truncated (≤60 chars)',
+    'Has Meta Description', 'Description Length (120-160 chars)', 'Meta Description Has CTA',
+    'Content Length (300+ words)', 'External Outbound Links',
+    'Canonical URL', 'Canonical Matches URL',
+    'Structured Data (JSON-LD)', 'Open Graph Tags', 'OG Completeness', 'OG Image', 'OG Image Size (1200x630)',
+    'Twitter Card', 'Apple Touch Icon',
+  ]),
+
   addCheck(results, name, passed, weight, detail, recommendation, category) {
+    // For app pages, exempt irrelevant SEO checks from scoring
+    if (results.isAppPage && this._appExemptChecks.has(name) && !passed) {
+      results.checks.push({
+        name,
+        passed: null,
+        weight: 0,
+        detail: detail + ' (app page — not scored)',
+        recommendation: null,
+        category: category || 'on-page',
+      });
+      return;
+    }
     results.maxScore += weight;
     if (passed) results.score += weight;
     results.checks.push({
@@ -446,35 +503,47 @@ const SeoAnalyzer = {
   },
 
   async checkSitemap(origin, results) {
-    const urls = [
-      `${origin}/sitemap.xml`,
-      `${origin}/sitemap_index.xml`,
-      `${origin}/sitemap/`,
-    ];
-
-    let found = false;
-    let detail = '';
-
-    for (const url of urls) {
+    // Check robots.txt-declared sitemap first if we already parsed one
+    if (results._robotsSitemapUrl) {
       try {
-        const resp = await fetchWithTimeout(url, { method: 'HEAD', cache: 'no-cache' });
+        const resp = await fetchWithTimeout(results._robotsSitemapUrl, { method: 'HEAD', cache: 'no-cache' });
         if (resp.ok) {
-          const contentType = resp.headers.get('content-type') || '';
-          if (contentType.includes('xml') || contentType.includes('text') || url.endsWith('.xml')) {
-            found = true;
-            detail = url.replace(origin, '');
-            break;
-          }
+          this.addCheck(results, 'XML Sitemap', true, 2, results._robotsSitemapUrl, null, 'technical');
+          return;
         }
       } catch {}
     }
 
-    if (!found && results._robotsSitemapUrl) {
+    // Probe common sitemap locations across CMSes
+    const paths = [
+      '/sitemap.xml',
+      '/sitemap_index.xml',
+      '/sitemap-index.xml',
+      '/sitemaps.xml',
+      '/sitemap/',
+      '/sitemap/sitemap.xml',
+      '/wp-sitemap.xml',          // WordPress 5.5+ core
+      '/sitemap_index.xml.gz',
+      '/sitemap.xml.gz',
+      '/page-sitemap.xml',        // Yoast
+      '/post-sitemap.xml',        // Yoast
+      '/sitemap1.xml',
+      '/sitemap-main.xml',
+    ];
+
+    let found = false;
+    let detail = '';
+    for (const path of paths) {
+      const url = `${origin}${path}`;
       try {
-        const resp = await fetchWithTimeout(results._robotsSitemapUrl, { method: 'HEAD', cache: 'no-cache' });
+        const resp = await fetchWithTimeout(url, { method: 'HEAD', cache: 'no-cache', redirect: 'follow' });
         if (resp.ok) {
-          found = true;
-          detail = results._robotsSitemapUrl;
+          const contentType = resp.headers.get('content-type') || '';
+          if (contentType.includes('xml') || contentType.includes('text') || path.endsWith('.xml') || path.endsWith('.xml.gz')) {
+            found = true;
+            detail = path;
+            break;
+          }
         }
       } catch {}
     }
@@ -570,24 +639,29 @@ const SeoAnalyzer = {
   checkDescriptionCta(seo, results) {
     const desc = (seo.description || '').toLowerCase();
     if (desc) {
-      const ctaWords = /\b(learn|get|discover|find|try|start|book|free|download|read|see|check|explore|calculate|compare)\b/;
-      const hasCta = ctaWords.test(desc);
+      const ctaWords = /\b(learn|get|discover|find|try|start|book|free|download|read|see|check|explore|calculate|compare|shop|buy|order|save|join|sign up|subscribe|request|claim|unlock)\b/;
+      const ctaWordsSv = /\b(läs|hämta|hitta|prova|börja|boka|gratis|ladda|köp|handla|beställ|spara|upptäck|jämför|registrera|testa|se|få)\b/;
+      const ctaWordsDe = /\b(erfahren|entdecken|testen|starten|buchen|kostenlos|herunterladen|lesen|vergleichen|kaufen|bestellen|sparen|registrieren|anmelden|sehen|bekommen)\b/;
+      const hasCta = ctaWords.test(desc) || ctaWordsSv.test(desc) || ctaWordsDe.test(desc);
       this.addCheck(results, 'Meta Description Has CTA', hasCta, 1,
         hasCta ? 'Contains action-oriented language' : 'No call-to-action words found',
-        'Add action words like "learn", "get", "discover", or "free" to improve click-through rate', 'on-page');
+        'Add action words like "learn", "get", "discover", or "free" (Swedish: "boka", "gratis", "prova", "testa") to improve click-through rate', 'on-page');
     }
   },
 
   async checkLlmsTxt(origin, results) {
-    try {
-      const resp = await fetchWithTimeout(`${origin}/llms.txt`, { method: 'HEAD', cache: 'no-cache' });
-      this.addCheck(results, 'llms.txt (AI Search)', resp.ok, 1,
-        resp.ok ? 'Present' : 'Not found',
-        'Add a llms.txt file to help AI search engines (ChatGPT, Perplexity) understand and cite your content', 'technical');
-    } catch {
-      this.addCheck(results, 'llms.txt (AI Search)', false, 1,
-        'Could not fetch', 'Add a llms.txt file for AI search engine visibility', 'technical');
+    // The llms.txt spec defines /llms.txt (index) and /llms-full.txt (full content).
+    // Either is sufficient — llms-full.txt is preferred as it includes inline content.
+    let found = null;
+    for (const path of ['/llms.txt', '/llms-full.txt']) {
+      try {
+        const resp = await fetchWithTimeout(`${origin}${path}`, { method: 'HEAD', cache: 'no-cache' });
+        if (resp.ok) { found = path; break; }
+      } catch {}
     }
+    this.addCheck(results, 'llms.txt (AI Search)', !!found, 1,
+      found ? `Present (${found})` : 'Not found',
+      'Add a llms.txt file to help AI search engines (ChatGPT, Perplexity) understand and cite your content', 'technical');
   },
 
   checkFaqSchemaVisibility(seo, results) {
@@ -623,6 +697,106 @@ const SeoAnalyzer = {
     }
   },
 
+
+  // ─── Schema Field Validation ───
+
+  checkSchemaFields(seo, results) {
+    const schemas = seo.structuredDataSchemas || [];
+
+    // LocalBusiness subtypes must have address
+    const localBusinessTypes = ['LocalBusiness', 'ProfessionalService', 'LegalService', 'MedicalBusiness', 'FinancialService', 'FoodEstablishment', 'LodgingBusiness', 'Store'];
+    const lbSchemas = schemas.filter((s) => localBusinessTypes.includes(s.type));
+    lbSchemas.forEach((s) => {
+      const hasAddress = s.fields.includes('address');
+      this.addCheck(results, `${s.type}: Has Address`, hasAddress, 2,
+        hasAddress ? 'Address field present' : `${s.type} schema missing required "address" field`,
+        'LocalBusiness subtypes require an "address" field with a PostalAddress — add streetAddress, addressLocality, postalCode, addressCountry', 'social');
+
+      // Warn about common invalid properties
+      if (s.fields.includes('serviceType')) {
+        this.addCheck(results, `${s.type}: No Invalid "serviceType"`, false, 1,
+          '"serviceType" is not recognized by Schema.org on this type',
+          'Remove "serviceType" — describe services via "hasOfferCatalog" instead', 'social');
+      }
+      if (s.fields.includes('provider')) {
+        this.addCheck(results, `${s.type}: No Invalid "provider"`, false, 1,
+          '"provider" is not a valid property on LocalBusiness subtypes',
+          'Remove "provider" — use @id references between schemas instead', 'social');
+      }
+    });
+
+    // SoftwareApplication should have aggregateRating or review
+    const swSchemas = schemas.filter((s) => s.type === 'SoftwareApplication');
+    swSchemas.forEach((s) => {
+      const hasRating = s.fields.includes('aggregateRating') || s.fields.includes('review');
+      if (!hasRating) {
+        this.addCheck(results, 'SoftwareApplication: Has Rating/Review', false, 1,
+          'SoftwareApplication without aggregateRating or review',
+          'Google warns about SoftwareApplication without reviews — use WebApplication instead if no real reviews exist', 'social');
+      }
+    });
+
+    // Article should have datePublished and author
+    const articleSchemas = schemas.filter((s) => s.type === 'Article' || s.type === 'BlogPosting' || s.type === 'NewsArticle');
+    articleSchemas.forEach((s) => {
+      if (!s.fields.includes('datePublished')) {
+        this.addCheck(results, 'Article: Has datePublished', false, 1,
+          'Article schema missing "datePublished"',
+          'Add datePublished to Article schema for rich results', 'social');
+      }
+      if (!s.fields.includes('author')) {
+        this.addCheck(results, 'Article: Has Author', false, 1,
+          'Article schema missing "author"',
+          'Add author to Article schema — Google prioritizes articles with clear authorship', 'social');
+      }
+    });
+  },
+
+  // ─── Hreflang Deep Checks ───
+
+  checkHreflangSelfRef(seo, results) {
+    if (seo.hasHreflang) {
+      this.addCheck(results, 'Hreflang Self-Referencing', seo.hreflangHasSelfRef, 2,
+        seo.hreflangHasSelfRef ? 'Page has self-referencing hreflang' : 'No hreflang tag points to the current page',
+        'Every page must include a hreflang tag pointing to itself — Google requires self-referencing hreflang for validation', 'technical');
+    }
+  },
+
+  checkHreflangXDefault(seo, results) {
+    if (seo.hasHreflang) {
+      this.addCheck(results, 'Hreflang x-default', seo.hreflangHasXDefault, 1,
+        seo.hreflangHasXDefault ? 'x-default hreflang present' : 'Missing x-default hreflang',
+        'Add hreflang="x-default" to specify the fallback page for users whose language is not targeted', 'technical');
+    }
+  },
+
+  checkHreflangHostMatch(seo, results) {
+    if (seo.hasHreflang) {
+      const mismatched = seo.hreflangHostMismatch || [];
+      this.addCheck(results, 'Hreflang Host Matches Canonical', mismatched.length === 0, 2,
+        mismatched.length === 0 ? 'All hreflang URLs use the same hostname as canonical' : `Hostname mismatch in hreflang: ${mismatched.join(', ')}`,
+        'Hreflang URLs must use the same hostname as the canonical URL — mixing www and non-www causes conflicts', 'technical');
+    }
+  },
+
+  // ─── Trailing Slash Check ───
+
+  checkTrailingSlashes(seo, results) {
+    const count = seo.internalLinksNoTrailingSlash || 0;
+    if (count > 0) {
+      // Info-only: many modern frameworks (SvelteKit, Next.js, Remix) serve
+      // both /path and /path/ without redirects. Only penalize if the server
+      // actually issues 301 redirects, which we can't detect client-side.
+      results.checks.push({
+        name: 'Internal Links Have Trailing Slashes',
+        passed: null,
+        weight: 0,
+        detail: `${count} internal link(s) missing trailing slashes`,
+        recommendation: 'Consider adding trailing slashes if your server redirects /path to /path/ (causes 301 chains). Many modern frameworks serve both without redirect.',
+        category: 'on-page',
+      });
+    }
+  },
 
   // ─── Security / Privacy ───
 

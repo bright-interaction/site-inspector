@@ -234,7 +234,8 @@ const SecurityAnalyzer = {
     if (csp.includes("'unsafe-eval'")) {
       issues.push("Uses 'unsafe-eval' — allows dynamic code execution (eval, Function)");
     }
-    if (csp.match(/script-src[^;]*\*/)) {
+    // Match bare * wildcard (any origin), but not subdomain patterns like *.example.com
+    if (csp.match(/script-src[^;]*\s\*(?:\s|;|$)/)) {
       issues.push("Wildcard (*) in script-src — allows scripts from any domain");
     }
     if (!csp.includes('default-src') && !csp.includes('script-src')) {
@@ -282,11 +283,19 @@ const SecurityAnalyzer = {
 
     const externalScripts = scripts.filter((s) => s.src && !s.src.startsWith('data:'));
     // Only flag truly third-party resources (different root domain), not own subdomains
+    // CDNs that serve dynamic content (different per browser/UA) — SRI would break
+    const dynamicCdns = /fonts\.googleapis\.com|fonts\.gstatic\.com|googletagmanager\.com/;
     const thirdPartyScripts = externalScripts.filter((s) => {
-      try { return getRootDomain(new URL(s.src).hostname) !== rootDomain; } catch { return false; }
+      try {
+        const host = new URL(s.src).hostname;
+        return getRootDomain(host) !== rootDomain && !dynamicCdns.test(host);
+      } catch { return false; }
     });
     const thirdPartyStyles = (styleLinks || []).filter((l) => {
-      try { return l.href && getRootDomain(new URL(l.href).hostname) !== rootDomain; } catch { return false; }
+      try {
+        const host = new URL(l.href).hostname;
+        return l.href && getRootDomain(host) !== rootDomain && !dynamicCdns.test(host);
+      } catch { return false; }
     });
 
     const scriptsWithSri = thirdPartyScripts.filter((s) => s.integrity);
@@ -406,17 +415,23 @@ const SecurityAnalyzer = {
   async checkSecurityTxt(origin, results) {
     let found = false;
     let detail = '';
-    try {
-      const resp = await fetchWithTimeout(`${origin}/.well-known/security.txt`, { cache: 'no-cache' });
-      if (resp.ok) {
-        const text = await resp.text();
-        if (text.includes('Contact:')) {
-          found = true;
-          const contact = text.match(/Contact:\s*(.+)/i);
-          detail = contact ? `Found (${contact[1].trim()})` : 'Found';
+    // RFC 9116 §3: /.well-known/security.txt is the preferred location, but /security.txt
+    // at the web root is allowed as a fallback for backwards compatibility.
+    const paths = ['/.well-known/security.txt', '/security.txt'];
+    for (const path of paths) {
+      try {
+        const resp = await fetchWithTimeout(`${origin}${path}`, { cache: 'no-cache' });
+        if (resp.ok) {
+          const text = await resp.text();
+          if (/^contact\s*:/im.test(text)) {
+            found = true;
+            const contact = text.match(/^contact\s*:\s*(.+)$/im);
+            detail = contact ? `Found at ${path} (${contact[1].trim()})` : `Found at ${path}`;
+            break;
+          }
         }
-      }
-    } catch {}
+      } catch {}
+    }
 
     results.maxScore += 1;
     if (found) results.score += 1;

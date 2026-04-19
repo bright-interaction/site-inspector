@@ -1,6 +1,6 @@
 # Site Inspector
 
-One-click website audit for Chrome. 130+ automated checks across security, performance, SEO, privacy, and accessibility. A+ to F grading, PDF reports, CSV export.
+One-click website audit for Chrome. 140+ automated checks across security, performance, SEO, privacy, and accessibility. A+ to F grading, PDF reports, CSV export.
 
 **Free. No tracking. No account. Everything runs locally.**
 
@@ -26,7 +26,7 @@ HTTPS, HSTS, Content-Security-Policy quality, X-Content-Type-Options, X-Frame-Op
 Core Web Vitals (LCP, INP, CLS), TTFB, FCP, DOM Content Loaded, page weight, request count, render-blocking scripts, image format (WebP/AVIF), lazy loading, image dimensions, font-display declarations, font file count, Google Fonts family count, inline CSS bloat detection, HTTP/2+ protocol, redirects.
 
 ### Privacy (12 checks)
-Consent banner detection (16 platforms: Cookiebot, OneTrust, CookieProof, and more), pre-consent tracking detection (GDPR violation), cookie count and security audit (HttpOnly, SameSite), third-party domain count, tracker identification (Google Analytics, Meta Pixel, Hotjar, Clarity, LinkedIn, TikTok, and more), AI training bot blocking in robots.txt, privacy policy detection, terms/cookie policy, DNT/GPC awareness.
+Consent banner detection (30+ platforms: Cookiebot, OneTrust, Usercentrics, Didomi, Iubenda, Axeptio, Borlabs, CookieFirst, CookieYes, TrustArc, Sourcepoint, Termly, Complianz, CookieProof, and more), pre-consent tracking detection (GDPR violation), cookie count and security audit (HttpOnly, SameSite), third-party domain count, tracker identification (Google Analytics, Meta Pixel, Hotjar, Clarity, LinkedIn, TikTok, and more), AI training bot blocking in robots.txt (19 crawlers including GPTBot, ClaudeBot, Google-Extended, PerplexityBot, Applebot-Extended), privacy policy detection (English + Swedish, URL probe fallback), terms/cookie policy detection, DNT/GPC awareness.
 
 ### Accessibility (21 checks)
 WCAG AA color contrast analysis, landmark roles (main, nav, header, footer), skip navigation link, heading structure and order, form input labels, button labels, link labels, image alt text, video captions, autocomplete attributes, tabindex issues, focus indicators, aria-hidden traps, table headers.
@@ -111,6 +111,24 @@ This extension:
 ---
 
 ## Version History
+
+### 1.4.1 (April 2026)
+- Privacy policy detection now scans the full URL path (catches `/legal/privacy`, `/about/privacy-notice`); probe list expanded from 9 to 21 paths
+- Terms/cookie policy detection: added URL probe fallback (catches sites that host `/cookies`, `/legal`, `/tos`, `/villkor`, `/kakor` without a footer link)
+- AI training bot detection: bot list grew from 5 to 19 (added ClaudeBot, OAI-SearchBot, PerplexityBot, Applebot-Extended, Bytespider, Amazonbot, Meta-ExternalAgent, cohere-ai, YouBot, and more)
+- AI training bot detection: replaced naive regex with a proper robots.txt parser — `Disallow: /admin` no longer falsely registers as fully blocking a bot
+- Consent banner detection: 30+ platforms (added CookieFirst, Borlabs, CookieLawInfo, Civic Cookie Control, Sourcepoint, Seers, Enzuzo, tarte au citron, FreePrivacyPolicy, illow, ConsentCookie, TermsFeed) plus secondary CDN domains (cdn.cookielaw.org, app.usercentrics.eu)
+- Consent cookie fallback: matches 25+ specific cookie names so consent is detected even when the script is blocked
+- Sitemap detection: 13 probe paths (added WordPress core `/wp-sitemap.xml`, Yoast `/page-sitemap.xml`, gzipped variants); checks robots.txt-declared sitemap first
+- llms.txt: also checks `/llms-full.txt`
+- security.txt: adds the RFC 9116 `/security.txt` fallback location; line-anchored Contact: matcher to avoid false positives on HTML 404 pages
+
+### 1.4.0 (April 2026)
+- Redirect detection: prevents header/content mixing after navigation
+- Performance scoring rebalanced: graduated thresholds for DOMContentLoaded, Full Load, TTFB
+- URL length check uses canonical URL (no longer penalized by UTM params)
+- CSP: subdomain wildcards (`*.example.com`) no longer flagged as bare wildcards
+- Consent banner: added CookieScript, HubSpot Cookie Banner
 
 ### 1.3.0 (April 2026)
 - 130+ checks (up from 80+)

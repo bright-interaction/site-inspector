@@ -25,8 +25,16 @@ chrome.webRequest.onHeadersReceived.addListener(
       headers[key] = h.value;
     }
 
-    // Merge — preserve existing domData if content script already sent it
+    // Merge — preserve existing domData only if same origin (prevents stale data across navigations)
     const existing = headerStore[details.tabId];
+    let preservedDomData = null;
+    if (existing?.domData) {
+      try {
+        const oldOrigin = existing.url ? new URL(existing.url).origin : '';
+        const newOrigin = new URL(details.url).origin;
+        if (oldOrigin === newOrigin) preservedDomData = existing.domData;
+      } catch {}
+    }
     headerStore[details.tabId] = {
       url: details.url,
       statusCode: details.statusCode,
@@ -34,7 +42,7 @@ chrome.webRequest.onHeadersReceived.addListener(
       rawHeaders,
       duplicateHeaders,
       timestamp: Date.now(),
-      domData: existing?.domData || null,
+      domData: preservedDomData,
     };
   },
   { urls: ['<all_urls>'] },

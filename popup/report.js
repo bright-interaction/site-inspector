@@ -175,13 +175,13 @@ function generateReport(results, url) {
 
   <h2>Performance</h2>
   <table><thead><tr><th>Metric</th><th>Value</th><th>Rating</th></tr></thead><tbody>
-    ${metricRow('TTFB', t.ttfb, 'ms', 200, 500)}
+    ${metricRow('TTFB', t.ttfb, 'ms', 500, 800)}
     ${metricRow('First Contentful Paint', t.fcp || cwv.fcp, 'ms', 1800, 3000)}
     ${cwv.lcp != null ? metricRow('Largest Contentful Paint', cwv.lcp, 'ms', 2500, 4000) : ''}
     ${cwv.inp != null ? metricRow('Interaction to Next Paint', cwv.inp, 'ms', 200, 500) : ''}
     ${cwv.cls != null ? metricRow('Cumulative Layout Shift', cwv.cls, '', 0.1, 0.25) : ''}
-    ${metricRow('DOM Ready', t.domContentLoaded, 'ms', 2000, 3500)}
-    ${metricRow('Full Load', t.loadComplete, 'ms', 3000, 5000)}
+    ${metricRow('DOM Ready', t.domContentLoaded, 'ms', 2500, 4000)}
+    ${metricRow('Full Load', t.loadComplete, 'ms', 4000, 7000)}
     ${pw.totalTransferKB > 0 ? metricRow('Total Size', pw.totalTransferKB, 'KB', 1000, 3000) : ''}
     ${metricRow('Requests', pw.totalRequests, '', 50, 100)}
   </tbody></table>

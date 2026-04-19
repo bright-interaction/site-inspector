@@ -411,6 +411,11 @@
       }
       lastLevel = level;
     });
+    // Flag missing H1 as a hierarchy issue if other headings exist
+    const hasH1 = Array.from(headingElements).some((h) => h.tagName === 'H1');
+    if (!hasH1 && headingElements.length > 0) {
+      hierarchyIssues.unshift('No H1 found — heading hierarchy starts at H' + headingElements[0].tagName.charAt(1));
+    }
     seo.headingHierarchy = headingHierarchy.slice(0, 30);
     seo.headingHierarchyIssues = hierarchyIssues;
     seo.emptyHeadings = headingHierarchy.filter((h) => h.empty).length;
@@ -463,15 +468,19 @@
     seo.hasStructuredData = jsonLd.length > 0;
     seo.structuredDataCount = jsonLd.length;
     seo.structuredDataTypes = [];
+    seo.structuredDataSchemas = []; // full schema objects for deep validation
     jsonLd.forEach((el) => {
       try {
         const obj = JSON.parse(el.textContent);
-        if (obj['@type']) seo.structuredDataTypes.push(obj['@type']);
-        if (Array.isArray(obj['@graph'])) {
-          obj['@graph'].forEach((item) => {
-            if (item['@type']) seo.structuredDataTypes.push(item['@type']);
-          });
-        }
+        const collect = (item) => {
+          if (item['@type']) {
+            seo.structuredDataTypes.push(item['@type']);
+            seo.structuredDataSchemas.push({ type: item['@type'], fields: Object.keys(item) });
+          }
+        };
+        if (obj['@type']) collect(obj);
+        if (Array.isArray(obj['@graph'])) obj['@graph'].forEach(collect);
+        if (Array.isArray(obj)) obj.forEach(collect);
       } catch {}
     });
 
@@ -497,7 +506,10 @@
     const canonical = document.querySelector('link[rel="canonical"]');
     seo.hasCanonical = !!canonical;
     seo.canonicalUrl = canonical ? canonical.href : '';
-    seo.canonicalMatchesUrl = canonical ? canonical.href === location.href : false;
+    // Compare canonical vs current URL ignoring query params and trailing slashes
+    // (tracking params in URL with clean canonical is correct behavior, not a mismatch)
+    const normalizeUrl = (u) => { try { const p = new URL(u); return (p.origin + p.pathname).replace(/\/$/, ''); } catch { return u; } };
+    seo.canonicalMatchesUrl = canonical ? normalizeUrl(canonical.href) === normalizeUrl(location.href) : false;
 
     // Robots
     const robots = document.querySelector('meta[name="robots"]');
@@ -513,6 +525,18 @@
       lang: l.getAttribute('hreflang'),
       href: l.href,
     })).slice(0, 20);
+
+    // Hreflang deep checks
+    if (seo.hasHreflang) {
+      const currentUrl = location.href.replace(/\/$/, '');
+      seo.hreflangHasSelfRef = seo.hreflangValues.some((h) => h.href.replace(/\/$/, '') === currentUrl);
+      seo.hreflangHasXDefault = seo.hreflangValues.some((h) => h.lang === 'x-default');
+      // Check if hreflang hostnames match canonical hostname
+      const canonicalHost = canonical ? new URL(canonical.href).hostname : location.hostname;
+      seo.hreflangHostMismatch = seo.hreflangValues
+        .filter((h) => { try { return new URL(h.href).hostname !== canonicalHost; } catch { return false; } })
+        .map((h) => h.lang);
+    }
 
     // Viewport
     const viewport = document.querySelector('meta[name="viewport"]');
@@ -554,7 +578,7 @@
     allLinks.forEach((a) => {
       const href = a.getAttribute('href') || '';
       const text = (a.textContent || '').trim();
-      if (!text && !a.querySelector('img') && !a.getAttribute('aria-label')) emptyLinks++;
+      if (!text && !a.querySelector('img[alt]') && !a.getAttribute('aria-label') && !a.getAttribute('aria-labelledby') && !a.getAttribute('title')) emptyLinks++;
       if (href === '#' || href === '') hashOnlyLinks++;
       if (href.startsWith('#') && href.length > 1) {
         const targetId = href.slice(1);
@@ -577,6 +601,22 @@
     seo.hashOnlyLinks = hashOnlyLinks;
     seo.brokenAnchors = brokenAnchors.slice(0, 10);
 
+    // Detect internal links missing trailing slashes (causes 301 redirect chains)
+    let internalLinksNoTrailingSlash = 0;
+    allLinks.forEach((a) => {
+      try {
+        const fullUrl = new URL(a.href);
+        if (fullUrl.hostname === location.hostname) {
+          const path = fullUrl.pathname;
+          // Skip root, hash-only, anchored, or links with file extensions
+          if (path !== '/' && !path.includes('.') && !path.endsWith('/')) {
+            internalLinksNoTrailingSlash++;
+          }
+        }
+      } catch {}
+    });
+    seo.internalLinksNoTrailingSlash = internalLinksNoTrailingSlash;
+
     // Favicon
     seo.hasFavicon = !!(
       document.querySelector('link[rel="icon"]') ||
@@ -584,8 +624,10 @@
     );
     seo.hasAppleTouchIcon = !!document.querySelector('link[rel="apple-touch-icon"]');
 
-    // URL analysis
-    seo.urlLength = location.href.length;
+    // URL analysis — use canonical URL for length/structure checks when available,
+    // since tracking params (UTM, gclid) inflate the actual URL unfairly
+    const cleanUrl = seo.canonicalUrl || (location.origin + location.pathname);
+    seo.urlLength = cleanUrl.length;
     seo.urlHasUnderscores = location.pathname.includes('_');
     seo.urlHasUppercase = /[A-Z]/.test(location.pathname);
     seo.urlDepth = location.pathname.split('/').filter((s) => s).length;
@@ -643,11 +685,32 @@
       return true;
     });
 
-    // Check for visible FAQ section
-    const hasVisibleFaq = !!(
-      document.querySelector('[id*="faq" i], [class*="faq" i], details summary, [itemtype*="FAQPage"]') ||
-      document.querySelector('h2, h3')?.textContent?.match(/\bfaq\b|frequently asked/i)
-    );
+    // Check for visible FAQ section using multiple heuristics:
+    // 1. Elements with "faq" in id/class or FAQPage itemtype
+    // 2. Headings containing FAQ-related text
+    // 3. Accordion patterns (2+ details/summary pairs)
+    // 4. Match FAQPage schema question text against visible page content
+    const hasFaqElement = !!document.querySelector('[id*="faq" i], [class*="faq" i], [itemtype*="FAQPage"]');
+    const hasFaqHeading = !!document.querySelector('h2, h3')?.textContent?.match(/\bfaq\b|frequently asked|vanliga frågor/i);
+    const hasAccordion = document.querySelectorAll('details summary').length >= 2;
+    // Check if FAQPage schema questions appear as visible text on the page
+    let schemaQuestionsVisible = false;
+    try {
+      const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+      for (const s of scripts) {
+        const data = JSON.parse(s.textContent);
+        const schemas = Array.isArray(data) ? data : [data];
+        for (const schema of schemas) {
+          if (schema['@type'] === 'FAQPage' && schema.mainEntity) {
+            const questions = schema.mainEntity.map((q) => (q.name || '').toLowerCase().slice(0, 50));
+            const bodyText = document.body.innerText.toLowerCase();
+            const matchCount = questions.filter((q) => q && bodyText.includes(q)).length;
+            if (matchCount >= Math.ceil(questions.length / 2)) schemaQuestionsVisible = true;
+          }
+        }
+      }
+    } catch {}
+    const hasVisibleFaq = hasFaqElement || hasFaqHeading || hasAccordion || schemaQuestionsVisible;
     seo.hasVisibleFaq = hasVisibleFaq;
 
     // Plaintext email detection
@@ -655,6 +718,8 @@
     // Emails assembled by JavaScript (obfuscated) are excluded by checking
     // whether the email also appears in a raw HTML attribute on the element
     // or its parent (data-email patterns used for JS assembly).
+    // Emails inside user-session UI (nav menus, account dropdowns, profile areas)
+    // are filtered out — they belong to the logged-in user, not the site.
     const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
     const visibleEmails = new Set();
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
@@ -663,10 +728,11 @@
       const matches = text.match(emailRegex);
       if (!matches) continue;
       for (const email of matches) {
-        // Skip if this text node lives inside an element that was JS-assembled
-        // (has data-email, data-contact-email, or similar obfuscation markers)
         const el = walker.currentNode.parentElement;
+        // Skip JS-obfuscated emails
         if (el && (el.closest('[data-email]') || el.closest('[data-contact-email]') || el.closest('[data-obfuscated]'))) continue;
+        // Skip emails inside user/account/session UI (likely the logged-in user, not site content)
+        if (el && el.closest('[class*="user"], [class*="account"], [class*="profile"], [class*="avatar"], [class*="menu"], nav, [role="menu"], [role="navigation"], [class*="dropdown"], [class*="popover"]')) continue;
         visibleEmails.add(email);
       }
     }
@@ -701,14 +767,15 @@
       const href = a.href || '';
       const text = (a.textContent || '').trim().toLowerCase();
       const rel = a.rel || '';
-      // Only capture links that might be relevant (privacy, terms, legal, sitemap)
-      if (
-        href.match(/privacy|gdpr|integritet|personuppgift|dataskydd|cookie/i) ||
-        href.match(/terms|villkor|anv.ndningsvillkor/i) ||
-        href.match(/sitemap|robots/i) ||
-        text.match(/privacy|integritet|personuppgift|dataskydd|cookie/i) ||
-        text.match(/terms|villkor/i)
-      ) {
+      // Match on link text OR on the last path segment (not arbitrary mid-URL matches
+      // that could match e.g. a news article with "privacy" in the slug)
+      const lastSegment = (href.replace(/[?#].*$/, '').replace(/\/$/, '').split('/').pop() || '').toLowerCase();
+      const isPrivacyPath = /^(privacy|gdpr|integritet|personuppgift|dataskydd|privacy-?policy|sekretess)$/.test(lastSegment);
+      const isTermsPath = /^(terms|villkor|anv.ndningsvillkor|cookie-?policy|legal|terms-and-conditions|terms-of-service)$/.test(lastSegment);
+      const isSitemapPath = /sitemap|robots/i.test(href);
+      const isPrivacyText = /\b(privacy|integritet|personuppgift|dataskydd|cookie)\b/i.test(text);
+      const isTermsText = /\b(terms|villkor)\b/i.test(text);
+      if (isPrivacyPath || isTermsPath || isSitemapPath || isPrivacyText || isTermsText) {
         links.push({ href, text: text.slice(0, 80), rel });
       }
     });
@@ -1004,7 +1071,7 @@
           required,
           fg,
           bg,
-          text: el.textContent.trim().slice(0, 40),
+          text: (el.innerText || el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 40),
           tag: el.tagName.toLowerCase(),
           isLarge,
         });
@@ -1017,7 +1084,12 @@
   function getEffectiveBackground(el) {
     let current = el;
     while (current && current !== document.documentElement) {
-      const bg = window.getComputedStyle(current).backgroundColor;
+      const style = window.getComputedStyle(current);
+      // If element has a background image or gradient, we can't compute a simple RGB
+      // value — return null to skip this element from contrast analysis
+      const bgImage = style.backgroundImage;
+      if (bgImage && bgImage !== 'none') return null;
+      const bg = style.backgroundColor;
       const rgb = parseRgb(bg);
       if (rgb && (rgb.a === undefined || rgb.a > 0)) return bg;
       current = current.parentElement;

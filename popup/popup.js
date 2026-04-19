@@ -41,6 +41,23 @@
       data.headers.rawHeaders = data.rawHeaders;
     }
 
+    // Detect stale domData from a previous page in the same tab
+    if (data.domData) {
+      try {
+        const tabOrigin = new URL(tab.url).origin;
+        const domOrigin = data.domData.pageOrigin || '';
+        if (domOrigin && tabOrigin !== domOrigin) {
+          data.domData = null; // stale — force re-inject
+        }
+      } catch {}
+    }
+
+    // Use the actual page URL from content-script when available
+    if (data.domData?.pageUrl) {
+      analyzedUrl = data.domData.pageUrl;
+      document.getElementById('site-url').textContent = analyzedUrl;
+    }
+
     if (data.domData) {
       await runAnalysis(data);
     } else {
@@ -75,6 +92,10 @@
           merged.headers.rawHeaders = merged.rawHeaders;
         }
         if (merged.domData) {
+          if (merged.domData.pageUrl) {
+            analyzedUrl = merged.domData.pageUrl;
+            document.getElementById('site-url').textContent = analyzedUrl;
+          }
           await runAnalysis(merged);
         } else {
           showError();
@@ -86,6 +107,11 @@
     document.getElementById('export-btn').addEventListener('click', exportCsv);
     document.getElementById('pdf-btn').addEventListener('click', openPdfReport);
     initDarkMode();
+
+    // Set version from manifest
+    const ver = chrome.runtime.getManifest().version;
+    const verEl = document.getElementById('ext-version');
+    if (verEl) verEl.textContent = 'v' + ver;
   }
 
   function getBackgroundData(tabId) {
@@ -126,8 +152,11 @@
       await new Promise((resolve) => setTimeout(resolve, 1200));
       const bgData = await getBackgroundData(tab.id);
       const data = bgData || existingData;
+      // Only use popup-fetched headers if background has none (fallback)
       if (fetchedHeaders && Object.keys(fetchedHeaders).length > 0) {
-        data.headers = { headers: fetchedHeaders };
+        if (!data.headers?.headers || Object.keys(data.headers.headers).length === 0) {
+          data.headers = { headers: fetchedHeaders };
+        }
       }
       if (data.headers && !data.headers.headers) {
         data.headers = { headers: data.headers };
@@ -136,6 +165,11 @@
         data.headers.duplicateHeaders = data.duplicateHeaders;
       }
       if (data.domData) {
+        // Update displayed URL to match actual analyzed page
+        if (data.domData.pageUrl) {
+          analyzedUrl = data.domData.pageUrl;
+          document.getElementById('site-url').textContent = analyzedUrl;
+        }
         await runAnalysis(data);
       } else {
         showError();
@@ -556,10 +590,10 @@
 
     const t = perf.timing;
     html += '<div class="section"><div class="section-title">Timing</div><div class="stat-grid">';
-    if (t.ttfb != null) html += colorStatCard(t.ttfb + 'ms', 'TTFB', perfColor(t.ttfb, 200, 500));
+    if (t.ttfb != null) html += colorStatCard(t.ttfb + 'ms', 'TTFB', perfColor(t.ttfb, 500, 800));
     if (t.fcp != null && cwv.lcp == null) html += colorStatCard(t.fcp + 'ms', 'FCP', perfColor(t.fcp, 1800, 3000));
-    if (t.domContentLoaded != null) html += colorStatCard(t.domContentLoaded + 'ms', 'DOM Ready', perfColor(t.domContentLoaded, 2000, 3500));
-    if (t.loadComplete != null) html += colorStatCard(t.loadComplete + 'ms', 'Full Load', perfColor(t.loadComplete, 3000, 5000));
+    if (t.domContentLoaded != null) html += colorStatCard(t.domContentLoaded + 'ms', 'DOM Ready', perfColor(t.domContentLoaded, 2500, 4000));
+    if (t.loadComplete != null) html += colorStatCard(t.loadComplete + 'ms', 'Full Load', perfColor(t.loadComplete, 4000, 7000));
     html += '</div></div>';
 
     const pw = perf.pageWeight;
@@ -900,13 +934,13 @@
       const rating = value < good ? 'Good' : value < ok ? 'Needs Work' : 'Poor';
       rows.push(pad([name, value, unit, rating]));
     };
-    addMetric('TTFB', t.ttfb, 'ms', 200, 500);
+    addMetric('TTFB', t.ttfb, 'ms', 500, 800);
     addMetric('First Contentful Paint', t.fcp || cwv.fcp, 'ms', 1800, 3000);
     if (cwv.lcp != null) addMetric('Largest Contentful Paint', cwv.lcp, 'ms', 2500, 4000);
     if (cwv.inp != null) addMetric('Interaction to Next Paint', cwv.inp, 'ms', 200, 500);
     if (cwv.cls != null) addMetric('Cumulative Layout Shift', cwv.cls, '', 0.1, 0.25);
-    addMetric('DOM Ready', t.domContentLoaded, 'ms', 2000, 3500);
-    addMetric('Full Load', t.loadComplete, 'ms', 3000, 5000);
+    addMetric('DOM Ready', t.domContentLoaded, 'ms', 2500, 4000);
+    addMetric('Full Load', t.loadComplete, 'ms', 4000, 7000);
     rows.push(pad(['Total Size', pw.totalTransferKB > 0 ? pw.totalTransferKB : 'N/A', pw.totalTransferKB > 0 ? 'KB' : '', pw.totalTransferKB > 0 ? (pw.totalTransferKB < 1000 ? 'Good' : pw.totalTransferKB < 3000 ? 'Needs Work' : 'Poor') : 'N/A']));
     rows.push(pad(['Total Requests', pw.totalRequests, '', pw.totalRequests < 50 ? 'Good' : pw.totalRequests < 100 ? 'Needs Work' : 'Poor']));
     rows.push(pad(['Render-Blocking Scripts', perf.resourceBreakdown.renderBlockingScripts || 0, '', (perf.resourceBreakdown.renderBlockingScripts || 0) === 0 ? 'Good' : 'Needs Work']));

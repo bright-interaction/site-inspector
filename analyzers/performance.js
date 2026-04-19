@@ -46,12 +46,12 @@ const PerformanceAnalyzer = {
       domInteractive: perf.domInteractive || null,
     };
 
-    // TTFB scoring
+    // TTFB scoring (Google considers < 800ms acceptable; < 500ms is good)
     if (perf.ttfb != null) {
       results.maxScore += 2;
-      if (perf.ttfb < 200) { results.score += 2; }
-      else if (perf.ttfb < 500) { results.score += 1; }
-      else { results.issues.push({ severity: 'warning', message: `Slow TTFB: ${perf.ttfb}ms (target < 200ms)` }); }
+      if (perf.ttfb < 500) { results.score += 2; }
+      else if (perf.ttfb < 800) { results.score += 1; }
+      else { results.issues.push({ severity: 'warning', message: `Slow TTFB: ${perf.ttfb}ms (target < 500ms)` }); }
     }
 
     // FCP scoring
@@ -62,18 +62,26 @@ const PerformanceAnalyzer = {
       else { results.issues.push({ severity: 'critical', message: `Slow FCP: ${perf.fcp}ms (target < 1800ms)` }); }
     }
 
-    // DOM Content Loaded
+    // DOM Content Loaded (graduated — most sites complete DOMContentLoaded in 2-4s)
     if (perf.domContentLoaded != null) {
-      results.maxScore += 1;
-      if (perf.domContentLoaded < 2000) { results.score += 1; }
-      else { results.issues.push({ severity: 'warning', message: `Slow DOMContentLoaded: ${perf.domContentLoaded}ms` }); }
+      results.maxScore += 2;
+      if (perf.domContentLoaded < 2500) { results.score += 2; }
+      else if (perf.domContentLoaded < 4000) {
+        results.score += 1;
+        results.issues.push({ severity: 'info', message: `DOMContentLoaded: ${perf.domContentLoaded}ms (target < 2500ms)` });
+      }
+      else { results.issues.push({ severity: 'warning', message: `Slow DOMContentLoaded: ${perf.domContentLoaded}ms (target < 2500ms)` }); }
     }
 
-    // Full load
+    // Full load (graduated — full page load includes all async resources)
     if (perf.loadComplete != null) {
-      results.maxScore += 1;
-      if (perf.loadComplete < 3000) { results.score += 1; }
-      else { results.issues.push({ severity: 'warning', message: `Slow page load: ${perf.loadComplete}ms` }); }
+      results.maxScore += 2;
+      if (perf.loadComplete < 4000) { results.score += 2; }
+      else if (perf.loadComplete < 7000) {
+        results.score += 1;
+        results.issues.push({ severity: 'info', message: `Page load: ${perf.loadComplete}ms (target < 4000ms)` });
+      }
+      else { results.issues.push({ severity: 'warning', message: `Slow page load: ${perf.loadComplete}ms (target < 4000ms)` }); }
     }
   },
 
